@@ -1,0 +1,214 @@
+﻿https://www.therpf.com/forums/threads/another-countdown-timer-gauntlet-using-an-arduino.317899/
+
+https://lesson.iarduino.ru/page/urok-17-podklyuchenie-rtc-chasy-realnogo-vremeni-s-knopkami/
+
+
+http://tok.hakynda.com/article/detail/188/mcp23017mcp23s17-16-bit-io-expander-with-serial-interface-i2cspi //паттерны
+
+https://tronixstuff.com/2011/08/26/arduino-mcp23017-tutorial/ передача байта на MCP
+
+https://forum.arduino.cc/index.php?topic=573385.0 //обращение к двум MCP
+http://www.bizkit.ru/2019/02/20/12466/
+
+
+http://arduino.ru/forum/pesochnitsa-razdel-dlya-novichkov/chasy-s-termometrom-ne-vsegda-schityvayutsya-nazhatiya-na-kn //установка часов кнопками
+https://simple-circuit.com/arduino-ds1307-lcd-set-button/    //установка часов кнопками
+
+
+https://arduinodiy.wordpress.com/2017/03/14/adding-an-mcp23017-16-port-io-expander-to-arduino-or-esp8266/ ОПИСАНИЕ РАБОТЫ через протокол wire
+
+https://stackoverflow.com/questions/36954218/how-to-use-multiple-mcp23017-chips-with-the-adafruit-mcp23017-h-library
+
+#include "Adafruit_MCP23017.h"
+Adafruit_MCP23017 mcp1;
+Adafruit_MCP23017 mcp2;
+Adafruit_MCP23017 mcp3;
+#define addr1 0x00
+#define addr2 0x01
+#define addr3 0x02
+void setup() {
+ mcp1.begin(addr1);
+ mcp2.begin(addr2);
+ mcp3.begin(addr3);
+}
+
+void loop() {
+
+
+}
+
+
+
+
+#include <Wire.h>
+#include "Adafruit_MCP23017.h"
+
+#include <SPI.h>
+#include <Ethernet.h>
+#include <PubSubClient.h>
+
+
+// Basic pin reading and pullup test for the MCP23017 I/O expander
+// public domain!
+
+// Connect pin #12 of the expander to Analog 5 (i2c clock)
+// Connect pin #13 of the expander to Analog 4 (i2c data)
+// Connect pins #15, 16 and 17 of the expander to ground (address selection)
+// Connect pin #9 of the expander to 5V (power)
+// Connect pin #10 of the expander to ground (common ground)
+// Connect pin #18 through a ~10kohm resistor to 5V (reset pin, active low)
+
+
+Adafruit_MCP23017 mcp;
+
+Adafruit_MCP23017 mcp2;
+
+
+// Update these with values suitable for your network.
+byte mac[]    = {  0xDE, 0xED, 0xBA, 0xFE, 0xED, 0xFE };
+IPAddress server(192,168, 0,2);
+
+
+EthernetClient ethClient;
+PubSubClient client(ethClient);
+
+static byte RelayArray[32]      = {0, 1, 2 ,3,4,5,6,7,8,9,10,11,12,13,14,15,0, 1, 2 ,3,4,5,6,7,8,9,10,11,12,13,14,15};
+static byte RelayStateArray[32] = {0, 0, 0,0,0,0,0,0,0, 0, 0,0,0,0,0,0,0, 0, 0,0,0,0,0,0,0, 0, 0,0,0,0,0,0};
+
+void setup() {
+
+
+  //Serial.begin(57600);
+//Serial.println("Working");
+  client.setServer(server, 1883);
+  client.setCallback(callback);
+
+  Ethernet.begin(mac);
+ 
+  //Serial.println("Working2");
+ 
+  // Allow the hardware to sort itself out
+  delay(1500);
+
+ 
+  mcp.begin();      // use default address 0
+   mcp2.begin(1);      // use default address 0
+ 
+  for( byte i = 0; i < 16; i++)
+  {
+     mcp.pinMode(RelayArray[i], OUTPUT);
+    //Serial.print(RelayArray[i]);
+    //Serial.print(" ");
+   mcp.digitalWrite(RelayArray[i], LOW);
+   
+  }
+
+  for( byte i = 0; i < 16; i++)
+  {
+     mcp2.pinMode(RelayArray[i], OUTPUT);
+    //Serial.print(RelayArray[i]);
+    //Serial.print(" ");
+   mcp2.digitalWrite(RelayArray[i], LOW);
+   
+  }
+
+
+
+ 
+}
+
+
+// flip the pin #0 up and down
+
+void loop() {
+
+
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+ 
+}
+
+String getValue(String data, char separator, int index)
+{
+    int found = 0;
+    int strIndex[] = { 0, -1 };
+    int maxIndex = data.length() - 1;
+
+    for (int i = 0; i <= maxIndex && found <= index; i++) {
+        if (data.charAt(i) == separator || i == maxIndex) {
+            found++;
+            strIndex[0] = strIndex[1] + 1;
+            strIndex[1] = (i == maxIndex) ? i+1 : i;
+        }
+    }
+    return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  //Serial.print("Message arrived [");
+  //Serial.print(topic);
+  //Serial.print("] ");
+
+String Topic = topic;
+
+byte Relay = getValue(Topic,'/',5).toInt();
+
+String PubState = "/device/HOUSE1/control/relay/"+(String)Relay+"/State";
+
+
+if(Relay <= 16) {
+if(payload[0] == '0'){
+mcp.digitalWrite(RelayArray[Relay], LOW);
+RelayStateArray[Relay] = 0;
+client.publish(PubState.c_str(),"0");
+}
+else if (payload[0] == '1'){
+mcp.digitalWrite(RelayArray[Relay], HIGH);
+RelayStateArray[Relay] = 1;
+client.publish(PubState.c_str(),"1");
+}
+}
+else
+{
+if(payload[0] == '0'){
+mcp2.digitalWrite(RelayArray[Relay], LOW);
+RelayStateArray[Relay] = 0;
+client.publish(PubState.c_str(),"0");
+}
+else if (payload[0] == '1'){
+mcp2.digitalWrite(RelayArray[Relay], HIGH);
+RelayStateArray[Relay] = 1;
+client.publish(PubState.c_str(),"1");
+}
+}
+
+
+ 
+
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    //Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("HOUSERelay")) {
+      //Serial.println("connected");
+      // Once connected, publish an announcement...
+      for( byte i = 0; i < 32; i++)
+      {
+       String PubState = "/device/HOUSE1/control/relay/"+String(RelayArray[i])+"/State";
+       client.publish(PubState.c_str(), String(RelayStateArray[i]).c_str());
+       }
+      client.subscribe("/device/HOUSE1/control/relay/+/Command");
+    } else {
+      //Serial.print("failed, rc=");
+      //Serial.print(client.state());
+      //Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
